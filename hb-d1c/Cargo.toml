@@ -1,6 +1,6 @@
 [package]
 name = "hb-d1c"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["SaavyLab LLC <jayson@saavylab.com>"]
 description = "Type-safe SQL generator for Cloudflare D1 + Rust"
