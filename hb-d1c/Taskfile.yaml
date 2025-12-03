@@ -1,0 +1,26 @@
+version: '3'
+
+vars:
+  CARGO_CMD: cargo
+  MIGRATIONS_DIR: ../../migrations
+
+tasks:
+  default:
+    desc: "List hb-d1c tasks"
+    cmds:
+      - task --list
+
+  format:
+    desc: "Format hb-d1c sources"
+    cmds:
+      - cargo fmt
+
+  check:
+    desc: "cargo check hb-d1c"
+    cmds:
+      - cargo check
+
+  build:
+    desc: "cargo build hb-d1c"
+    cmds:
+      - cargo build

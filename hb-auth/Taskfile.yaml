@@ -1,0 +1,25 @@
+version: '3'
+
+vars:
+  CARGO_CMD: cargo
+
+tasks:
+  default:
+    desc: "List hb-auth tasks"
+    cmds:
+      - task --list
+
+  format:
+    desc: "Format hb-auth sources"
+    cmds:
+      - cargo fmt
+
+  check:
+    desc: "cargo check hb-auth"
+    cmds:
+      - cargo check
+
+  build:
+    desc: "cargo build hb-auth"
+    cmds:
+      - cargo build
