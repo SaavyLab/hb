@@ -15,14 +15,12 @@ pub fn analyze_query(conn: &Connection, query: &mut Query) -> Result<()> {
             let column_count = stmt.column_count();
 
             // Strict validation for Scalar queries
-            if matches!(query.cardinality, Cardinality::Scalar) {
-                if column_count != 1 {
-                    anyhow::bail!(
-                        "Query '{}' is marked as :scalar but returns {} columns. Scalar queries must return exactly one column.",
-                        query.name,
-                        column_count
-                    );
-                }
+            if matches!(query.cardinality, Cardinality::Scalar) && column_count != 1 {
+                anyhow::bail!(
+                    "Query '{}' is marked as :scalar but returns {} columns. Scalar queries must return exactly one column.",
+                    query.name,
+                    column_count
+                );
             }
 
             let mut columns = Vec::with_capacity(column_count);
@@ -106,7 +104,7 @@ fn sqlite_type_to_rust(decl_type: &str) -> Result<&str> {
 fn is_column_nullable(conn: &Connection, table: &str, col_name: &str) -> Result<bool> {
     // PRAGMA table_info(table_name) returns:
     // cid | name | type | notnull | dflt_value | pk
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
 
     let rows = stmt.query_map([], |row| {
         let name: String = row.get(1)?;

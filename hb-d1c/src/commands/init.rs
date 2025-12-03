@@ -156,7 +156,7 @@ pub fn run(conn: &Connection, args: &InitArgs) -> Result<(), Error> {
         if mig_dir.contains("migrations") {
             mig_dir.replace("migrations", "queries")
         } else {
-            format!("{}/../queries", mig_dir)
+            format!("{mig_dir}/../queries")
         }
     } else {
         "db/queries".to_string()
@@ -310,7 +310,7 @@ pub fn run(conn: &Connection, args: &InitArgs) -> Result<(), Error> {
             "{}",
             style("================================================").dim()
         ))?;
-        term.write_line(&format!("{}", config_string))?;
+        term.write_line(&config_string)?;
     }
 
     Ok(())

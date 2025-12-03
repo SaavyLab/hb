@@ -33,12 +33,9 @@ mod kv_cache {
         format!("jwks:{}", team_domain)
     }
 
-    pub async fn get_cached_jwks(
-        kv: &KvStore,
-        team_domain: &str,
-    ) -> Option<CachedJwks> {
+    pub async fn get_cached_jwks(kv: &KvStore, team_domain: &str) -> Option<CachedJwks> {
         let key = cache_key(team_domain);
-        
+
         match kv.get(&key).json::<CachedJwks>().await {
             Ok(Some(cached)) => {
                 if cached.is_expired(Date::now(), JWKS_CACHE_TTL_MS) {

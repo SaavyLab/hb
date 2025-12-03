@@ -8,8 +8,6 @@ use crate::{cli::Cli, commands::Command, utils::sql::replay_migrations};
 
 mod cli;
 mod commands;
-mod config;
-mod migrations;
 pub mod utils;
 
 fn main() -> Result<()> {

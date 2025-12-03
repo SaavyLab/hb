@@ -28,3 +28,39 @@ impl AuthConfig {
         domain.split('.').next().unwrap_or(domain).to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_config_new() {
+        let config = AuthConfig::new("https://myteam.cloudflareaccess.com", "aud123");
+        assert_eq!(&*config.team_domain, "https://myteam.cloudflareaccess.com");
+        assert_eq!(&*config.audience, "aud123");
+    }
+
+    #[test]
+    fn test_auth_config_issuer() {
+        let config = AuthConfig::new("https://myteam.cloudflareaccess.com", "aud123");
+        assert_eq!(config.issuer(), "https://myteam.cloudflareaccess.com");
+    }
+
+    #[test]
+    fn test_team_name_with_https() {
+        let config = AuthConfig::new("https://myteam.cloudflareaccess.com", "aud");
+        assert_eq!(config.team_name(), "myteam");
+    }
+
+    #[test]
+    fn test_team_name_with_http() {
+        let config = AuthConfig::new("http://myteam.cloudflareaccess.com", "aud");
+        assert_eq!(config.team_name(), "myteam");
+    }
+
+    #[test]
+    fn test_team_name_without_protocol() {
+        let config = AuthConfig::new("myteam.cloudflareaccess.com", "aud");
+        assert_eq!(config.team_name(), "myteam");
+    }
+}

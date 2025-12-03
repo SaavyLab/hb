@@ -29,3 +29,6 @@ sqlparser = { version = "0.59.0", features = ["visitor"] }
 syn = "2.0.110"
 toml = "0.9.8"
 walkdir = "2.5.0"
+
+[dev-dependencies]
+tempfile = "3"

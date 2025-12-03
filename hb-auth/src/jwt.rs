@@ -206,10 +206,7 @@ async fn find_jwk_cached(
 
 #[cfg(feature = "kv")]
 #[worker::send]
-async fn load_jwks_cached(
-    config: &AuthConfig,
-    kv: &worker::kv::KvStore,
-) -> WorkerResult<Vec<Jwk>> {
+async fn load_jwks_cached(config: &AuthConfig, kv: &worker::kv::KvStore) -> WorkerResult<Vec<Jwk>> {
     // Try KV cache first
     if let Some(cached) = get_cached_jwks(kv, config.team_domain.as_ref()).await {
         return Ok(cached

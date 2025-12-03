@@ -79,7 +79,7 @@ pub fn process_query_file(file: &PathBuf) -> Result<Vec<Query>> {
             };
 
             let (transformed_sql, detected_param_names) = rewrite_and_extract_params(&raw_sql)
-                .with_context(|| format!("Failed to rewrite SQL for query: {}", name))?;
+                .with_context(|| format!("Failed to rewrite SQL for query: {name}"))?;
 
             // 4. Merge explicit types (from -- params:) with detected names
             // If -- params: header is present, we enforce strict validation to ensure
@@ -99,9 +99,7 @@ pub fn process_query_file(file: &PathBuf) -> Result<Vec<Query>> {
 
                 if !missing_from_header.is_empty() {
                     anyhow::bail!(
-                        "Query '{}' uses parameters {:?} which are not defined in the '-- params:' header.",
-                        name,
-                        missing_from_header
+                        "Query '{name}' uses parameters {missing_from_header:?} which are not defined in the '-- params:' header.",
                     );
                 }
 
@@ -114,9 +112,7 @@ pub fn process_query_file(file: &PathBuf) -> Result<Vec<Query>> {
 
                 if !unused_in_sql.is_empty() {
                     anyhow::bail!(
-                        "Query '{}' defines parameters {:?} which are not used in the SQL.",
-                        name,
-                        unused_in_sql
+                        "Query '{name}' defines parameters {unused_in_sql:?} which are not used in the SQL.",
                     );
                 }
             }
@@ -183,7 +179,7 @@ fn rewrite_and_extract_params(sql: &str) -> Result<(String, Vec<String>)> {
                 visitor.found_params.len()
             };
 
-            *param_name = format!("?{}", idx);
+            *param_name = format!("?{idx}");
         }
         ControlFlow::<()>::Continue(())
     });
@@ -351,4 +347,137 @@ pub fn parse_instrument_header(line: &str) -> Result<Vec<String>> {
     // No, strict format is better to allow future extensions like `level(debug)`
 
     anyhow::bail!("Invalid instrument directive. Expected `skip(arg1, arg2)` or `skip_all`");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_parse_query_header_one() {
+        let (name, card, stmt) = parse_query_header("-- name: GetUser :one").unwrap();
+        assert_eq!(name, "GetUser");
+        assert!(matches!(card, Cardinality::One));
+        assert!(!stmt);
+    }
+
+    #[test]
+    fn test_parse_query_header_many() {
+        let (name, card, _) = parse_query_header("-- name: ListUsers :many").unwrap();
+        assert_eq!(name, "ListUsers");
+        assert!(matches!(card, Cardinality::Many));
+    }
+
+    #[test]
+    fn test_parse_query_header_exec() {
+        let (name, card, _) = parse_query_header("-- name: DeleteUser :exec").unwrap();
+        assert_eq!(name, "DeleteUser");
+        assert!(matches!(card, Cardinality::Exec));
+    }
+
+    #[test]
+    fn test_parse_query_header_scalar() {
+        let (name, card, _) = parse_query_header("-- name: CountUsers :scalar").unwrap();
+        assert_eq!(name, "CountUsers");
+        assert!(matches!(card, Cardinality::Scalar));
+    }
+
+    #[test]
+    fn test_parse_query_header_with_stmt() {
+        let (name, card, stmt) = parse_query_header("-- name: GetUser :one :stmt").unwrap();
+        assert_eq!(name, "GetUser");
+        assert!(matches!(card, Cardinality::One));
+        assert!(stmt);
+    }
+
+    #[test]
+    fn test_parse_query_header_invalid_cardinality() {
+        let result = parse_query_header("-- name: GetUser :invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_query_params_single() {
+        let params = parse_query_params("-- params: user_id String").unwrap();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "user_id");
+        assert_eq!(params[0].rust_type, "String");
+    }
+
+    #[test]
+    fn test_parse_query_params_multiple() {
+        let params = parse_query_params("-- params: id i64, name String, active bool").unwrap();
+        assert_eq!(params.len(), 3);
+        assert_eq!(params[0].name, "id");
+        assert_eq!(params[0].rust_type, "i64");
+        assert_eq!(params[1].name, "name");
+        assert_eq!(params[1].rust_type, "String");
+        assert_eq!(params[2].name, "active");
+        assert_eq!(params[2].rust_type, "bool");
+    }
+
+    #[test]
+    fn test_parse_instrument_skip() {
+        let fields = parse_instrument_header("-- instrument: skip(password, email)").unwrap();
+        assert_eq!(fields, vec!["password", "email"]);
+    }
+
+    #[test]
+    fn test_parse_instrument_skip_all() {
+        let fields = parse_instrument_header("-- instrument: skip_all").unwrap();
+        assert_eq!(fields, vec!["*"]);
+    }
+
+    #[test]
+    fn test_rewrite_named_params() {
+        let (sql, params) =
+            rewrite_and_extract_params("SELECT * FROM users WHERE id = :id AND org = :org")
+                .unwrap();
+        assert!(sql.contains("?1"));
+        assert!(sql.contains("?2"));
+        assert_eq!(params, vec!["id", "org"]);
+    }
+
+    #[test]
+    fn test_rewrite_repeated_param() {
+        let (sql, params) =
+            rewrite_and_extract_params("SELECT * FROM users WHERE id = :id OR backup_id = :id")
+                .unwrap();
+        // Same param used twice should get same index
+        assert_eq!(sql.matches("?1").count(), 2);
+        assert_eq!(params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_process_query_file_basic() {
+        let mut file = NamedTempFile::with_suffix(".sql").unwrap();
+        writeln!(file, "-- name: GetUser :one").unwrap();
+        writeln!(file, "SELECT id, name FROM users WHERE id = :id;").unwrap();
+        file.flush().unwrap();
+
+        let queries = process_query_file(&file.path().to_path_buf()).unwrap();
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].name, "GetUser");
+        assert!(matches!(queries[0].cardinality, Cardinality::One));
+        assert_eq!(queries[0].params.as_ref().unwrap().len(), 1);
+        assert_eq!(queries[0].params.as_ref().unwrap()[0].name, "id");
+    }
+
+    #[test]
+    fn test_process_query_file_multiple_queries() {
+        let mut file = NamedTempFile::with_suffix(".sql").unwrap();
+        writeln!(file, "-- name: GetUser :one").unwrap();
+        writeln!(file, "SELECT * FROM users WHERE id = :id;").unwrap();
+        writeln!(file).unwrap();
+        writeln!(file, "-- name: ListUsers :many").unwrap();
+        writeln!(file, "SELECT * FROM users WHERE org_id = :org_id;").unwrap();
+        file.flush().unwrap();
+
+        let queries = process_query_file(&file.path().to_path_buf()).unwrap();
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].name, "GetUser");
+        assert_eq!(queries[1].name, "ListUsers");
+    }
 }

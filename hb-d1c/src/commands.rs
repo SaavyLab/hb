@@ -25,8 +25,8 @@ pub enum Command {
 
 pub fn run(conn: &Connection, cli: &Cli, config: &D1CConfig) -> Result<()> {
     match &cli.command {
-        Command::Generate => generate::run(conn, &config),
-        Command::Watch => watch::run(conn, &config),
+        Command::Generate => generate::run(conn, config),
+        Command::Watch => watch::run(conn, config),
         Command::DumpSchema => dump_schema::run(conn),
         Command::Init(_) => unreachable!("Init command handled in main"),
     }
