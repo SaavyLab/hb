@@ -191,9 +191,30 @@ SELECT balance FROM accounts WHERE user_id = :user_id AND currency = :currency;
 - ✅ **Named parameters** – No more positional `?1`, `?2` mistakes
 - ✅ **Compile-time safety** – Typos fail at build time, not runtime
 - ✅ **Zero boilerplate** – No manual JSON parsing
+- ✅ **Multi-file organization** – Split queries by domain (see below)
 - ✅ **WASM-optimized** – Tiny generated code, no runtime overhead
 - ✅ **Wrangler-native** – Uses your existing migration workflow
 - ✅ **Watch mode** – Auto-regenerate during development
+
+### Organizing Queries
+
+d1c encourages splitting queries across multiple `.sql` files by domain:
+
+```
+db/queries/
+├── users.sql      → src/d1c/queries/users.rs
+├── monitors.sql   → src/d1c/queries/monitors.rs
+└── orgs.sql       → src/d1c/queries/orgs.rs
+```
+
+Each file becomes a Rust submodule. Use them like:
+
+```rust
+use crate::d1c::queries::{users, monitors};
+
+let user = users::get_user(&d1, user_id).await?;
+let monitors = monitors::list_by_org(&d1, org_id).await?;
+```
 
 ---
 
