@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0] - 2024-12-07
+## [0.2.0] - 2025-12-07
 
 ### Changed
 - **Breaking**: Switched from `rsa`/`sha2` crates to Web Crypto API for JWT signature verification
