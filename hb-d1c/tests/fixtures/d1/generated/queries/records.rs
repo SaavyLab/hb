@@ -10,40 +10,28 @@ pub async fn insert_record(
     note: Option<&str>,
 ) -> Result<()> {
     let stmt = d1
-        .prepare(
-            "INSERT INTO records (broker_id, ordinal, payload, note) VALUES (?1, ?2, ?3, ?4)",
-        );
-    let stmt = stmt
-        .bind(
-            &[
-                broker_id.into(),
-                (ordinal as f64).into(),
-                payload.into(),
-                match note {
-                    Some(value) => value.into(),
-                    None => worker::wasm_bindgen::JsValue::NULL,
-                },
-            ],
-        )?;
+        .prepare("INSERT INTO records (broker_id, ordinal, payload, note) VALUES (?1, ?2, ?3, ?4)");
+    let stmt = stmt.bind(&[
+        broker_id.into(),
+        (ordinal as f64).into(),
+        payload.into(),
+        match note {
+            Some(value) => value.into(),
+            None => worker::wasm_bindgen::JsValue::NULL,
+        },
+    ])?;
     stmt.run().await?;
     Ok(())
 }
-pub async fn update_record(
-    d1: &D1Database,
-    note: Option<&str>,
-    broker_id: &str,
-) -> Result<()> {
+pub async fn update_record(d1: &D1Database, note: Option<&str>, broker_id: &str) -> Result<()> {
     let stmt = d1.prepare("UPDATE records SET note = ?1 WHERE broker_id = ?2");
-    let stmt = stmt
-        .bind(
-            &[
-                match note {
-                    Some(value) => value.into(),
-                    None => worker::wasm_bindgen::JsValue::NULL,
-                },
-                broker_id.into(),
-            ],
-        )?;
+    let stmt = stmt.bind(&[
+        match note {
+            Some(value) => value.into(),
+            None => worker::wasm_bindgen::JsValue::NULL,
+        },
+        broker_id.into(),
+    ])?;
     stmt.run().await?;
     Ok(())
 }
@@ -55,14 +43,9 @@ pub struct GetRecordRow {
     pub payload: Vec<u8>,
     pub note: Option<String>,
 }
-pub async fn get_record(
-    d1: &D1Database,
-    broker_id: &str,
-) -> Result<Option<GetRecordRow>> {
+pub async fn get_record(d1: &D1Database, broker_id: &str) -> Result<Option<GetRecordRow>> {
     let stmt = d1
-        .prepare(
-            "SELECT id, broker_id, ordinal, payload, note FROM records WHERE broker_id = ?1",
-        );
+        .prepare("SELECT id, broker_id, ordinal, payload, note FROM records WHERE broker_id = ?1");
     let stmt = stmt.bind(&[broker_id.into()])?;
     Ok(stmt.first::<GetRecordRow>(None).await?)
 }
@@ -75,10 +58,8 @@ pub struct ListRecordsRow {
     pub note: Option<String>,
 }
 pub async fn list_records(d1: &D1Database) -> Result<Vec<ListRecordsRow>> {
-    let stmt = d1
-        .prepare(
-            "SELECT id, broker_id, ordinal, payload, note FROM records ORDER BY ordinal",
-        );
+    let stmt =
+        d1.prepare("SELECT id, broker_id, ordinal, payload, note FROM records ORDER BY ordinal");
     let result = stmt.all().await?;
     Ok(result.results::<ListRecordsRow>()?)
 }

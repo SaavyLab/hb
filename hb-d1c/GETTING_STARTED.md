@@ -61,7 +61,8 @@ SELECT count(*) AS count FROM records;
 Parameter names come from SQL. Direct insert/update/comparison contexts can infer types from migration declarations. SQLite does not expose parameter types through `prepare`, so ambiguous cases must declare every parameter exactly:
 
 ```sql
--- params: broker_id String, ordinal i64
+-- params: broker_id String
+-- params: ordinal i64
 ```
 
 Expressions and aggregates commonly need exact result declarations:
@@ -70,7 +71,7 @@ Expressions and aggregates commonly need exact result declarations:
 -- columns: count i64
 ```
 
-Annotations use Rust type syntax and are parsed with `syn`. Unknown or ambiguous types fail; they never become `String` by default.
+Repeated `-- params:` and `-- columns:` lines are additive; duplicate names still fail. Annotations use Rust type syntax and are parsed with `syn`. Unknown or ambiguous types fail; they never become `String` by default.
 
 ## 4. Generate and expose the module
 
@@ -87,7 +88,7 @@ pub mod queries;
 
 The query file above is available as `crate::generated::queries::records`.
 
-Run generation twice if desired: unchanged output is not rewritten and both runs are byte-identical. Commit generated source with the query and migration change.
+Generation requires `rustfmt` on `PATH` and formats output using the consuming project's rustfmt configuration, so a subsequent `cargo fmt` is byte-stable. Run generation twice if desired: unchanged output is not rewritten and both runs are byte-identical. Commit generated source with the query and migration change.
 
 ## 5. Call rusqlite output
 
