@@ -34,10 +34,11 @@ queries_dir = "db/queries"
 out_dir = "src/generated"
 module_name = "queries"
 emit_schema = true
+emit_migrations = true
 instrument_by_default = false
 ```
 
-`version` and `target` are required. Unknown versions, unknown targets, and unknown fields fail. `instrument_by_default` is D1-only and must be `false` for rusqlite.
+`version` and `target` are required. Unknown versions, unknown targets, and unknown fields fail. `emit_migrations` defaults to `false` for existing version 1 configurations; when enabled it generates `out_dir/migrations.rs`. `instrument_by_default` is D1-only and must be `false` for rusqlite.
 
 Run `d1c init` for interactive setup. It asks for the target first. D1 setup can discover a single `migrations_dir` from `wrangler.toml`; rusqlite setup does not require Wrangler.
 
@@ -51,7 +52,7 @@ d1c watch
 d1c dump-schema
 ```
 
-Use `--config PATH` with any command. `generate` builds the complete output in memory before replacing files, formats generated modules with the project's `rustfmt`, avoids rewriting unchanged files, and removes stale generated Rust submodules. `rustfmt` must be available on `PATH`; formatting failures abort generation. `check` runs the same strict pipeline without writing and fails on missing, stale, or extra generated modules.
+Use `--config PATH` with any command. `generate` builds the complete output in memory before replacing files, formats generated modules with the project's `rustfmt`, avoids rewriting unchanged files, and removes stale generated Rust submodules and optional migration manifests. It never overwrites or removes a handwritten `migrations.rs`. `rustfmt` must be available on `PATH`; formatting failures abort generation. `check` runs the same strict pipeline without writing and fails on missing, stale, or extra generated output.
 
 Typical CI:
 
@@ -122,10 +123,17 @@ Result rows derive `Debug`, `Clone`, and `PartialEq`, not Serde. Application cod
 A handwritten module such as `src/generated.rs` can expose output configured with `out_dir = "src/generated"`:
 
 ```rust
+pub mod migrations;
 pub mod queries;
 ```
 
 Then call `crate::generated::queries::records::insert_record(...)`.
+
+## Generated migration manifest
+
+With `emit_migrations = true`, `out_dir/migrations.rs` contains a target-neutral `Migration` type and ordered `MIGRATIONS` slice. Each entry has an immutable ID derived from its `/`-separated path relative to `migrations_dir`, SQL embedded with `include_str!`, and a `sha256:<hex>` checksum of the migration file contents. Renaming a file is therefore a removed ID plus a new ID, not the same migration.
+
+The manifest has no `hb-d1c`, rusqlite, Worker, or async runtime dependency. Application code owns migration execution, durable applied-migration metadata, locking, transaction boundaries, and recovery. It must key durable state by `id`, compare `checksum` before treating an applied ID as complete, and fail rather than silently accepting a mismatch. `d1c check` detects source additions, removals, renames, and edits because each changes the committed manifest.
 
 ## Generated D1 API
 

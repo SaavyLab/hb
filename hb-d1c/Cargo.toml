@@ -1,6 +1,6 @@
 [package]
 name = "hb-d1c"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["SaavyLab LLC <jayson@saavylab.com>"]
 description = "Strict SQL-to-Rust generator for Cloudflare D1 and rusqlite"
@@ -37,10 +37,12 @@ heck = "0.5.0"
 inquire = "0.9.1"
 notify = "8.2.0"
 prettyplease = "0.2.37"
+pathdiff = "0.2.3"
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
 rusqlite = { version = "0.37.0", features = ["bundled", "column_decltype", "column_metadata"]}
 serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10.9"
 sqlparser = { version = "0.59.0", features = ["visitor"] }
 syn = { version = "2.0.110", features = ["extra-traits"] }
 toml = "0.9.8"

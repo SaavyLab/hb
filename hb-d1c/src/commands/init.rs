@@ -73,6 +73,9 @@ pub fn run(args: &InitArgs) -> Result<()> {
     let emit_schema = Confirm::new("Emit queries/schema.sql for inspection?")
         .with_default(true)
         .prompt()?;
+    let emit_migrations = Confirm::new("Generate embedded migration registry?")
+        .with_default(false)
+        .prompt()?;
     let instrument_by_default = if target == Target::D1 {
         Confirm::new("Add tracing instrumentation to D1 functions?")
             .with_default(false)
@@ -89,6 +92,7 @@ pub fn run(args: &InitArgs) -> Result<()> {
         out_dir,
         module_name,
         emit_schema,
+        emit_migrations,
         instrument_by_default,
     };
     config.validate()?;

@@ -6,4 +6,5 @@ queries_dir = "../shared/db/queries"
 out_dir = "generated"
 module_name = "queries"
 emit_schema = false
+emit_migrations = true
 instrument_by_default = false

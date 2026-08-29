@@ -169,6 +169,8 @@ A skipped name must be a real query parameter. Instrumentation annotations and `
 
 ## Migration and output guarantees
 
-Migration `.sql` files are sorted by path, `schema.sql` is excluded, and replay occurs in a transaction. Any failure rolls back the complete schema. An empty migrations directory is explicitly supported as an empty schema.
+Migration `.sql` files are sorted by their `/`-separated path relative to `migrations_dir`; `schema.sql` is excluded, and replay occurs in a transaction. Any failure rolls back the complete schema. An empty migrations directory is explicitly supported as an empty schema.
 
-Generation parses, analyzes, validates, and renders every module before mutating output. It writes deterministic source, leaves unchanged files untouched, and removes stale generated `.rs` submodules. `d1c check` executes the same pipeline in memory and reports path-oriented missing, stale, and extra output.
+When `emit_migrations = true`, `out_dir/migrations.rs` embeds that ordered set as `MIGRATIONS`. Each entry exposes the relative path as `id`, the file through `include_str!` as `sql`, and a `sha256:<hex>` content checksum. An ID is immutable; renaming a migration is removal plus addition. Generated code does not execute migrations or own state. The application must persist applied IDs and checksums, reject changed content for an applied ID, serialize migrators, and define transaction and recovery policy.
+
+Generation parses, analyzes, validates, and renders every module before mutating output. It writes deterministic source, leaves unchanged files untouched, and removes stale generated `.rs` submodules or an obsolete generated migration manifest. It never overwrites or removes a handwritten `migrations.rs`. `d1c check` executes the same pipeline in memory and reports path-oriented missing, stale, and extra output.
