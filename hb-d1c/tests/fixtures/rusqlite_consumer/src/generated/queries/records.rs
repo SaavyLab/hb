@@ -13,14 +13,13 @@ pub fn insert_record(
     params: &InsertRecordParams<'_>,
 ) -> rusqlite::Result<usize> {
     const SQL: &str = "INSERT INTO records (broker_id, ordinal, payload, note) VALUES (:broker_id, :ordinal, :payload, :note)";
-    connection
-        .execute(
-            SQL,
-            rusqlite::named_params! {
-                ":broker_id" : params.broker_id, ":ordinal" : params.ordinal, ":payload"
-                : params.payload, ":note" : params.note,
-            },
-        )
+    connection.execute(
+        SQL,
+        rusqlite::named_params! {
+            ":broker_id" : params.broker_id, ":ordinal" : params.ordinal, ":payload"
+            : params.payload, ":note" : params.note,
+        },
+    )
 }
 #[derive(Debug, Clone)]
 pub struct UpdateRecordParams<'a> {
@@ -32,13 +31,12 @@ pub fn update_record(
     params: &UpdateRecordParams<'_>,
 ) -> rusqlite::Result<usize> {
     const SQL: &str = "UPDATE records SET note = :note WHERE broker_id = :broker_id";
-    connection
-        .execute(
-            SQL,
-            rusqlite::named_params! {
-                ":note" : params.note, ":broker_id" : params.broker_id,
-            },
-        )
+    connection.execute(
+        SQL,
+        rusqlite::named_params! {
+            ":note" : params.note, ":broker_id" : params.broker_id,
+        },
+    )
 }
 #[derive(Debug, Clone)]
 pub struct GetRecordParams<'a> {
@@ -56,7 +54,8 @@ pub fn get_record(
     connection: &rusqlite::Connection,
     params: &GetRecordParams<'_>,
 ) -> rusqlite::Result<Option<GetRecordRow>> {
-    const SQL: &str = "SELECT id, broker_id, ordinal, payload, note FROM records WHERE broker_id = :broker_id";
+    const SQL: &str =
+        "SELECT id, broker_id, ordinal, payload, note FROM records WHERE broker_id = :broker_id";
     let mut statement = connection.prepare_cached(SQL)?;
     statement
         .query_row(
@@ -88,38 +87,32 @@ pub struct ListRecordsRow {
     pub payload: Vec<u8>,
     pub note: Option<String>,
 }
-pub fn list_records(
-    connection: &rusqlite::Connection,
-) -> rusqlite::Result<Vec<ListRecordsRow>> {
+pub fn list_records(connection: &rusqlite::Connection) -> rusqlite::Result<Vec<ListRecordsRow>> {
     const SQL: &str = "SELECT id, broker_id, ordinal, payload, note FROM records ORDER BY ordinal";
     let mut statement = connection.prepare_cached(SQL)?;
-    let rows = statement
-        .query_map(
-            rusqlite::params![],
-            |row| {
-                const COLUMN_ID: usize = 0usize;
-                const COLUMN_BROKER_ID: usize = 1usize;
-                const COLUMN_ORDINAL: usize = 2usize;
-                const COLUMN_PAYLOAD: usize = 3usize;
-                const COLUMN_NOTE: usize = 4usize;
-                Ok(ListRecordsRow {
-                    id: row.get(COLUMN_ID)?,
-                    broker_id: row.get(COLUMN_BROKER_ID)?,
-                    ordinal: row.get(COLUMN_ORDINAL)?,
-                    payload: row.get(COLUMN_PAYLOAD)?,
-                    note: row.get(COLUMN_NOTE)?,
-                })
-            },
-        )?;
+    let rows = statement.query_map(rusqlite::params![], |row| {
+        const COLUMN_ID: usize = 0usize;
+        const COLUMN_BROKER_ID: usize = 1usize;
+        const COLUMN_ORDINAL: usize = 2usize;
+        const COLUMN_PAYLOAD: usize = 3usize;
+        const COLUMN_NOTE: usize = 4usize;
+        Ok(ListRecordsRow {
+            id: row.get(COLUMN_ID)?,
+            broker_id: row.get(COLUMN_BROKER_ID)?,
+            ordinal: row.get(COLUMN_ORDINAL)?,
+            payload: row.get(COLUMN_PAYLOAD)?,
+            note: row.get(COLUMN_NOTE)?,
+        })
+    })?;
     rows.collect()
 }
-pub fn count_records(
-    connection: &rusqlite::Connection,
-) -> rusqlite::Result<Option<i64>> {
+pub fn count_records(connection: &rusqlite::Connection) -> rusqlite::Result<Option<i64>> {
     const SQL: &str = "SELECT count(*) AS count FROM records";
     const COLUMN_COUNT: usize = 0;
     let mut statement = connection.prepare_cached(SQL)?;
-    statement.query_row(rusqlite::params![], |row| row.get(COLUMN_COUNT)).optional()
+    statement
+        .query_row(rusqlite::params![], |row| row.get(COLUMN_COUNT))
+        .optional()
 }
 #[derive(Debug, Clone)]
 pub struct FindRepeatedParams {
@@ -181,11 +174,11 @@ pub fn get_custom_ordinal(
         )
         .optional()
 }
-pub fn constant_value(
-    connection: &rusqlite::Connection,
-) -> rusqlite::Result<Option<i64>> {
+pub fn constant_value(connection: &rusqlite::Connection) -> rusqlite::Result<Option<i64>> {
     const SQL: &str = "SELECT 42 AS value";
     const COLUMN_VALUE: usize = 0;
     let mut statement = connection.prepare_cached(SQL)?;
-    statement.query_row(rusqlite::params![], |row| row.get(COLUMN_VALUE)).optional()
+    statement
+        .query_row(rusqlite::params![], |row| row.get(COLUMN_VALUE))
+        .optional()
 }

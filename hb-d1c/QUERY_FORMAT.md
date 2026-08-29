@@ -71,7 +71,7 @@ FROM events
 WHERE broker_id = :broker_id AND ordinal > :ordinal;
 ```
 
-When present, `-- params:` must exactly match SQL parameter names. Missing names, unused names, duplicates, conflicting repeated annotations, invalid Rust types, and generated Rust identifier collisions fail. Type text is parsed as `syn::Type`, not accepted as arbitrary text.
+One or more `-- params:` lines are additive and together must exactly match SQL parameter names. This allows large parameter sets to use one or a few fields per line. Missing names, unused names, duplicates across any annotation line, conflicting repeated annotations, invalid Rust types, and generated Rust identifier collisions fail. Type text is parsed as `syn::Type`, not accepted as arbitrary text.
 
 No unknown parameter type defaults to `String`.
 
@@ -117,7 +117,7 @@ LEFT JOIN events e ON e.resource_id = r.id
 GROUP BY r.uid;
 ```
 
-`-- columns:` names, order, and count must exactly match SQLite result metadata. Types must parse as Rust types. Duplicate generated fields fail.
+One or more `-- columns:` lines are additive. Their combined names, order, and count must exactly match SQLite result metadata. Types must parse as Rust types. Duplicate names across annotation lines and duplicate generated fields fail.
 
 No unknown result type defaults to `String`. A fixture value observed as non-null does not prove non-nullability.
 

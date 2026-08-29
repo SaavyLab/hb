@@ -74,34 +74,43 @@ fn parse_block(path: &Path, line: usize, header: &str, lines: &[String]) -> Resu
     let rust_name = rust_identifier(&name)
         .with_context(|| format!("{}:{line}: query `{name}`", path.display()))?;
 
-    let mut params_header: Option<Vec<(String, TypeSpec)>> = None;
-    let mut columns_header: Option<Vec<ColumnAnnotation>> = None;
+    let mut params_header = Vec::new();
+    let mut has_params_header = false;
+    let mut columns_header = Vec::new();
+    let mut has_columns_header = false;
     let mut instrument_skip = None;
     let mut sql_lines = Vec::new();
 
     for source_line in lines {
         let trimmed = source_line.trim_start();
         if trimmed.starts_with(PARAMS) {
-            if params_header.is_some() {
-                bail!(
-                    "{}:{line}: query `{name}` has multiple -- params: annotations",
-                    path.display()
-                );
+            has_params_header = true;
+            for (param_name, rust_type) in parse_typed_items(trimmed, PARAMS)? {
+                if params_header.iter().any(|(known, _)| known == &param_name) {
+                    bail!(
+                        "{}:{line}: query `{name}` repeats parameter annotation `{param_name}`",
+                        path.display()
+                    );
+                }
+                params_header.push((param_name, rust_type));
             }
-            params_header = Some(parse_typed_items(trimmed, PARAMS)?);
         } else if trimmed.starts_with(COLUMNS) {
-            if columns_header.is_some() {
-                bail!(
-                    "{}:{line}: query `{name}` has multiple -- columns: annotations",
-                    path.display()
-                );
+            has_columns_header = true;
+            for (column_name, rust_type) in parse_typed_items(trimmed, COLUMNS)? {
+                if columns_header
+                    .iter()
+                    .any(|column: &ColumnAnnotation| column.name == column_name)
+                {
+                    bail!(
+                        "{}:{line}: query `{name}` repeats column annotation `{column_name}`",
+                        path.display()
+                    );
+                }
+                columns_header.push(ColumnAnnotation {
+                    name: column_name,
+                    rust_type,
+                });
             }
-            columns_header = Some(
-                parse_typed_items(trimmed, COLUMNS)?
-                    .into_iter()
-                    .map(|(name, rust_type)| ColumnAnnotation { name, rust_type })
-                    .collect(),
-            );
         } else if trimmed.starts_with(INSTRUMENT) {
             if instrument_skip.is_some() {
                 bail!(
@@ -140,7 +149,12 @@ fn parse_block(path: &Path, line: usize, header: &str, lines: &[String]) -> Resu
     let statement = statements.remove(0);
     let named_sql = statement.to_string();
     let (positional_sql, parameter_names) = positional_sql(&statement);
-    let parameters = reconcile_parameters(path, &name, parameter_names, params_header)?;
+    let parameters = reconcile_parameters(
+        path,
+        &name,
+        parameter_names,
+        has_params_header.then_some(params_header),
+    )?;
 
     Ok(Query {
         name,
@@ -151,7 +165,7 @@ fn parse_block(path: &Path, line: usize, header: &str, lines: &[String]) -> Resu
         positional_sql,
         statement,
         parameters,
-        explicit_columns: columns_header,
+        explicit_columns: has_columns_header.then_some(columns_header),
         columns: Vec::new(),
         instrument_skip,
         generate_statement,
@@ -383,6 +397,30 @@ mod tests {
         )
         .is_ok());
         assert!(parse("-- name: I :one\n-- params: id i64\n-- columns: id i64\nINSERT INTO t(id) VALUES (:id) RETURNING id;").is_ok());
+    }
+
+    #[test]
+    fn accepts_additive_annotations_and_rejects_repeated_names() {
+        let queries = parse(
+            "-- name: Q :one\n\
+             -- params: id i64\n\
+             -- params: name String\n\
+             -- columns: id i64\n\
+             -- columns: name String\n\
+             SELECT :id AS id, :name AS name;",
+        )
+        .unwrap();
+        assert_eq!(queries[0].parameters.len(), 2);
+        assert_eq!(queries[0].explicit_columns.as_ref().unwrap().len(), 2);
+
+        assert!(
+            parse("-- name: Q :scalar\n-- params: id i64\n-- params: id String\nSELECT :id;")
+                .is_err()
+        );
+        assert!(parse(
+            "-- name: Q :scalar\n-- columns: value i64\n-- columns: value String\nSELECT 1 AS value;"
+        )
+        .is_err());
     }
 
     #[test]

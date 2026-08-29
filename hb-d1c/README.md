@@ -51,7 +51,7 @@ d1c watch
 d1c dump-schema
 ```
 
-Use `--config PATH` with any command. `generate` builds the complete output in memory before replacing files, avoids rewriting unchanged files, and removes stale generated Rust submodules. `check` runs the same strict pipeline without writing and fails on missing, stale, or extra generated modules.
+Use `--config PATH` with any command. `generate` builds the complete output in memory before replacing files, formats generated modules with the project's `rustfmt`, avoids rewriting unchanged files, and removes stale generated Rust submodules. `rustfmt` must be available on `PATH`; formatting failures abort generation. `check` runs the same strict pipeline without writing and fails on missing, stale, or extra generated modules.
 
 Typical CI:
 
@@ -76,8 +76,11 @@ Cardinalities are `:exec`, `:one`, `:many`, and `:scalar`. Each annotation owns 
 SQLite `prepare` does not report parameter types. `hb-d1c` infers only direct, unambiguous column-bound parameters. Ambiguous parameters require an exact annotation:
 
 ```sql
--- params: ordinal i64, broker_id String
+-- params: ordinal i64
+-- params: broker_id String
 ```
+
+Repeated `-- params:` and `-- columns:` lines are additive, so large contracts can be split into reviewable lines. Names must remain unique across the complete annotation.
 
 Expressions, aggregates, custom declarations, and other result metadata that cannot prove a Rust type require an exact result annotation:
 

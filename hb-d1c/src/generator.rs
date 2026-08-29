@@ -91,7 +91,7 @@ pub fn plan(config: &Config, base_dir: impl AsRef<Path>) -> Result<GenerationPla
     for (module, queries) in &grouped {
         files.insert(
             module_dir.join(format!("{module}.rs")),
-            render::render_module(queries, config)
+            render::render_module(queries, config, base_dir)
                 .with_context(|| format!("render target {} module `{module}`", config.target))?,
         );
     }
@@ -312,5 +312,24 @@ mod tests {
             .cloned()
             .collect::<String>();
         assert!(one_source.contains("use rusqlite::OptionalExtension;"));
+    }
+
+    #[test]
+    fn generated_rust_is_rustfmt_idempotent() {
+        let (root, config) = fixture(Target::Rusqlite);
+        let plan = plan(&config, root.path()).unwrap();
+        for (path, source) in plan
+            .files
+            .iter()
+            .filter(|(path, _)| path.extension().is_some_and(|extension| extension == "rs"))
+        {
+            let formatted = crate::render::format_rust(source, root.path()).unwrap();
+            assert_eq!(
+                formatted,
+                *source,
+                "generated file {} changed under rustfmt",
+                path.display()
+            );
+        }
     }
 }

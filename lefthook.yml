@@ -1,0 +1,4 @@
+pre-push:
+  commands:
+    repository-qa:
+      run: nix run .#ci

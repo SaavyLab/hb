@@ -16,7 +16,6 @@ impl FromSql for SessionOrdinal {
     }
 }
 
-#[rustfmt::skip]
 #[path = "generated/queries/records.rs"]
 mod records;
 

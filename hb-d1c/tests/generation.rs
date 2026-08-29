@@ -20,7 +20,6 @@ impl FromSql for SessionOrdinal {
     }
 }
 
-#[rustfmt::skip]
 #[path = "fixtures/rusqlite_consumer/src/generated/queries/records.rs"]
 mod generated_records;
 
