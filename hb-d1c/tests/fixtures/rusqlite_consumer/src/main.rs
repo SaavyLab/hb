@@ -16,6 +16,9 @@ impl FromSql for SessionOrdinal {
     }
 }
 
+#[path = "generated/migrations.rs"]
+mod migrations;
+
 #[path = "generated/queries/records.rs"]
 mod records;
 
@@ -23,9 +26,11 @@ use records::*;
 
 fn main() -> rusqlite::Result<()> {
     let mut connection = Connection::open_in_memory()?;
-    connection.execute_batch(include_str!(
-        "../../shared/db/migrations/001_records.sql"
-    ))?;
+    for migration in migrations::MIGRATIONS {
+        assert!(migration.checksum.starts_with("sha256:"));
+        connection.execute_batch(migration.sql)?;
+    }
+    assert_eq!(migrations::MIGRATIONS[0].id, "001_records.sql");
 
     assert_eq!(
         insert_record(

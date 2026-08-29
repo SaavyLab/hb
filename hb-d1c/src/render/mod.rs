@@ -1,4 +1,5 @@
 mod d1;
+pub(crate) mod migrations;
 mod rusqlite;
 
 use std::{

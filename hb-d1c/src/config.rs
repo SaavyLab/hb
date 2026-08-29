@@ -31,6 +31,8 @@ pub struct Config {
     pub out_dir: String,
     pub module_name: String,
     pub emit_schema: bool,
+    #[serde(default)]
+    pub emit_migrations: bool,
     pub instrument_by_default: bool,
 }
 
@@ -58,6 +60,9 @@ impl Config {
         }
         syn::parse_str::<syn::Ident>(self.module_name.trim_end_matches(".rs"))
             .context("module_name must be a Rust identifier")?;
+        if self.emit_migrations && self.module_name.trim_end_matches(".rs") == "migrations" {
+            bail!("module_name `migrations` conflicts with the generated migration manifest");
+        }
         if self.target == Target::Rusqlite && self.instrument_by_default {
             bail!(
                 "target rusqlite is incompatible with instrument_by_default; instrumentation is D1-only"
@@ -80,6 +85,7 @@ mod tests {
             out_dir: "generated".into(),
             module_name: "queries".into(),
             emit_schema: false,
+            emit_migrations: false,
             instrument_by_default: false,
         }
     }
@@ -93,6 +99,34 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("version 2"));
+    }
+
+    #[test]
+    fn existing_version_one_config_defaults_migration_manifest_off() {
+        let source = r#"
+version = 1
+target = "rusqlite"
+migrations_dir = "migrations"
+queries_dir = "queries"
+out_dir = "generated"
+module_name = "queries"
+emit_schema = false
+instrument_by_default = false
+"#;
+        let config: Config = toml::from_str(source).unwrap();
+        assert!(!config.emit_migrations);
+    }
+
+    #[test]
+    fn rejects_manifest_and_query_module_name_collision() {
+        let mut config = config();
+        config.emit_migrations = true;
+        config.module_name = "migrations.rs".into();
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("conflicts"));
     }
 
     #[test]

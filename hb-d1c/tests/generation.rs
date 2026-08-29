@@ -20,6 +20,9 @@ impl FromSql for SessionOrdinal {
     }
 }
 
+#[path = "fixtures/rusqlite_consumer/src/generated/migrations.rs"]
+mod generated_migrations;
+
 #[path = "fixtures/rusqlite_consumer/src/generated/queries/records.rs"]
 mod generated_records;
 
@@ -56,11 +59,11 @@ fn generated_rusqlite_code_executes_all_cardinalities_and_transactions() {
     use generated_records::*;
 
     let mut connection = Connection::open_in_memory().unwrap();
-    connection
-        .execute_batch(include_str!(
-            "fixtures/shared/db/migrations/001_records.sql"
-        ))
-        .unwrap();
+    for migration in generated_migrations::MIGRATIONS {
+        assert!(migration.checksum.starts_with("sha256:"));
+        connection.execute_batch(migration.sql).unwrap();
+    }
+    assert_eq!(generated_migrations::MIGRATIONS[0].id, "001_records.sql");
     assert_eq!(
         insert_record(
             &connection,

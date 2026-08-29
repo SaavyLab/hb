@@ -21,6 +21,7 @@ queries_dir = "db/queries"
 out_dir = "src/generated"
 module_name = "queries"
 emit_schema = true
+emit_migrations = true
 instrument_by_default = false
 ```
 
@@ -38,7 +39,7 @@ CREATE TABLE records (
 );
 ```
 
-Migration files are replayed by sorted path into one in-memory SQLite database. `schema.sql` is a generated inspection file and is never replayed. An empty migrations directory intentionally represents an empty schema. Any migration error aborts and rolls back the complete replay.
+Migration files are replayed by sorted relative path into one in-memory SQLite database. `schema.sql` is a generated inspection file and is never replayed. An empty migrations directory intentionally represents an empty schema. Any migration error aborts and rolls back the complete replay. With `emit_migrations = true`, that same order and file set becomes an embedded runtime manifest.
 
 ## 3. Add annotated queries
 
@@ -83,12 +84,25 @@ git add src/generated db/queries/schema.sql
 With `out_dir = "src/generated"`, keep a handwritten `src/generated.rs`:
 
 ```rust
+pub mod migrations;
 pub mod queries;
 ```
 
-The query file above is available as `crate::generated::queries::records`.
+The query file above is available as `crate::generated::queries::records`. The target-neutral migration manifest is available as `crate::generated::migrations::MIGRATIONS`; every item contains `id`, `sql`, and `checksum`.
 
-Generation requires `rustfmt` on `PATH` and formats output using the consuming project's rustfmt configuration, so a subsequent `cargo fmt` is byte-stable. Run generation twice if desired: unchanged output is not rewritten and both runs are byte-identical. Commit generated source with the query and migration change.
+Migration IDs are `/`-separated paths relative to `migrations_dir`. Treat them as immutable: a rename is removal plus addition. Persist each applied ID and its checksum, reject a checksum mismatch for an already-applied ID, and serialize concurrent migrators. Application code—not generated code—owns durable metadata, locking, transaction boundaries, and recovery. The embedded manifest adds no `hb-d1c` runtime dependency.
+
+For a fresh rusqlite database, the execution primitive can consume the embedded SQL directly:
+
+```rust
+for migration in crate::generated::migrations::MIGRATIONS {
+    connection.execute_batch(migration.sql)?;
+}
+```
+
+A production migrator must wrap that primitive with the durable ID/checksum policy above instead of replaying every migration on every startup.
+
+Generation requires `rustfmt` on `PATH` and formats output using the consuming project's rustfmt configuration, so a subsequent `cargo fmt` is byte-stable. Run generation twice if desired: unchanged output is not rewritten and both runs are byte-identical. Commit generated source with the query and migration change. `d1c check` fails when the migration manifest is missing or stale.
 
 ## 5. Call rusqlite output
 
