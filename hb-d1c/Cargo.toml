@@ -37,7 +37,6 @@ heck = "0.5.0"
 inquire = "0.9.1"
 notify = "8.2.0"
 prettyplease = "0.2.37"
-pathdiff = "0.2.3"
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
 rusqlite = { version = "0.37.0", features = ["bundled", "column_decltype", "column_metadata"]}

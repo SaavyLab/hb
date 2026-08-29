@@ -40,6 +40,15 @@ fn committed_goldens_are_current_valid_rust_and_target_isolated() {
         })
         .unwrap();
         syn::parse_file(&source).unwrap();
+        let manifest_source = fs::read_to_string(if fixture == "d1" {
+            root.join("generated/migrations.rs")
+        } else {
+            root.join("src/generated/migrations.rs")
+        })
+        .unwrap();
+        syn::parse_file(&manifest_source).unwrap();
+        assert!(manifest_source.contains("CREATE TABLE records"));
+        assert!(!manifest_source.contains("include_str!"));
         if fixture == "d1" {
             assert!(source.contains("worker::D1Database"));
             assert!(source.contains("pub async fn"));

@@ -131,7 +131,7 @@ Then call `crate::generated::queries::records::insert_record(...)`.
 
 ## Generated migration manifest
 
-With `emit_migrations = true`, `out_dir/migrations.rs` contains a target-neutral `Migration` type and ordered `MIGRATIONS` slice. Each entry has an immutable ID derived from its `/`-separated path relative to `migrations_dir`, SQL embedded with `include_str!`, and a `sha256:<hex>` checksum of the migration file contents. Renaming a file is therefore a removed ID plus a new ID, not the same migration.
+With `emit_migrations = true`, `out_dir/migrations.rs` contains a target-neutral `Migration` type and ordered `MIGRATIONS` slice. Each entry has an immutable ID derived from its `/`-separated path relative to `migrations_dir`, SQL rendered as a Rust string literal, and a `sha256:<hex>` checksum of the same migration contents. SQL and checksum therefore remain one generation snapshot even if a migration file is later edited without rerunning `d1c`. Renaming a file is a removed ID plus a new ID, not the same migration.
 
 The manifest has no `hb-d1c`, rusqlite, Worker, or async runtime dependency. Application code owns migration execution, durable applied-migration metadata, locking, transaction boundaries, and recovery. It must key durable state by `id`, compare `checksum` before treating an applied ID as complete, and fail rather than silently accepting a mismatch. `d1c check` detects source additions, removals, renames, and edits because each changes the committed manifest.
 

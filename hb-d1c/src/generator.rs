@@ -110,12 +110,8 @@ pub fn plan(config: &Config, base_dir: impl AsRef<Path>) -> Result<GenerationPla
         ensure_generator_owned_or_missing(&migration_manifest_path)?;
         files.insert(
             migration_manifest_path,
-            render::migrations::render_manifest(
-                schema.migrations(),
-                &out_dir.join("migrations.rs"),
-                base_dir,
-            )
-            .context("render migration manifest")?,
+            render::migrations::render_manifest(schema.migrations(), base_dir)
+                .context("render migration manifest")?,
         );
     }
     if config.emit_schema {
@@ -365,7 +361,9 @@ mod tests {
         let manifest = root.path().join("src/generated/migrations.rs");
         let first = fs::read_to_string(&manifest).unwrap();
         assert!(first.contains("id: \"001.sql\""));
-        assert!(first.contains("include_str!(\"../../db/migrations/001.sql\")"));
+        assert!(first
+            .contains("sql: \"CREATE TABLE item(id INTEGER PRIMARY KEY, name TEXT NOT NULL);\""));
+        assert!(!first.contains("include_str!"));
         assert!(first.contains("sha256:"));
         check(&config, root.path()).unwrap();
 

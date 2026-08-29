@@ -1,51 +1,25 @@
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use quote::quote;
 
 use crate::schema::MigrationSource;
 
 use super::format_tokens;
 
-pub fn render_manifest(
-    migrations: &[MigrationSource],
-    output_path: &Path,
-    project_dir: &Path,
-) -> Result<String> {
-    let output_dir = output_path
-        .parent()
-        .context("generated migration manifest has no parent directory")?;
-    let entries = migrations
-        .iter()
-        .map(|migration| {
-            let include_path =
-                pathdiff::diff_paths(&migration.path, output_dir).with_context(|| {
-                    format!(
-                        "cannot express migration {} relative to generated manifest {}",
-                        migration.path.display(),
-                        output_path.display()
-                    )
-                })?;
-            let include_path = include_path
-                .to_str()
-                .with_context(|| {
-                    format!(
-                        "migration include path {} is not UTF-8",
-                        include_path.display()
-                    )
-                })?
-                .replace('\\', "/");
-            let id = &migration.id;
-            let checksum = &migration.checksum;
-            Ok(quote! {
-                Migration {
-                    id: #id,
-                    sql: include_str!(#include_path),
-                    checksum: #checksum,
-                }
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
+pub fn render_manifest(migrations: &[MigrationSource], project_dir: &Path) -> Result<String> {
+    let entries = migrations.iter().map(|migration| {
+        let id = &migration.id;
+        let sql = &migration.sql;
+        let checksum = &migration.checksum;
+        quote! {
+            Migration {
+                id: #id,
+                sql: #sql,
+                checksum: #checksum,
+            }
+        }
+    });
 
     format_tokens(
         quote! {
@@ -90,11 +64,11 @@ mod tests {
         )
         .unwrap();
         let migrations = load_migrations(&migrations_dir).unwrap();
-        let output = root.path().join("src/generated/migrations.rs");
-        let source = render_manifest(&migrations, &output, root.path()).unwrap();
+        let source = render_manifest(&migrations, root.path()).unwrap();
 
         assert!(source.find("001_first.sql").unwrap() < source.find("002_second.sql").unwrap());
-        assert!(source.contains("include_str!(\"../../db/migrations/001_first.sql\")"));
+        assert!(source.contains("sql: \"CREATE TABLE item(id INTEGER);\""));
+        assert!(!source.contains("include_str!"));
         assert!(source.contains("sha256:"));
         syn::parse_file(&source).unwrap();
     }

@@ -90,7 +90,7 @@ pub mod queries;
 
 The query file above is available as `crate::generated::queries::records`. The target-neutral migration manifest is available as `crate::generated::migrations::MIGRATIONS`; every item contains `id`, `sql`, and `checksum`.
 
-Migration IDs are `/`-separated paths relative to `migrations_dir`. Treat them as immutable: a rename is removal plus addition. Persist each applied ID and its checksum, reject a checksum mismatch for an already-applied ID, and serialize concurrent migrators. Application code—not generated code—owns durable metadata, locking, transaction boundaries, and recovery. The embedded manifest adds no `hb-d1c` runtime dependency.
+Migration IDs are `/`-separated paths relative to `migrations_dir`. Treat them as immutable: a rename is removal plus addition. The generated SQL literal and checksum come from the same generation snapshot; editing a source migration without regenerating cannot silently pair new SQL with an old checksum. Persist each applied ID and its checksum, reject a checksum mismatch for an already-applied ID, and serialize concurrent migrators. Application code—not generated code—owns durable metadata, locking, transaction boundaries, and recovery. The embedded manifest adds no `hb-d1c` runtime dependency.
 
 For a fresh rusqlite database, the execution primitive can consume the embedded SQL directly:
 
