@@ -1,0 +1,9 @@
+version = 1
+target = "rusqlite"
+
+migrations_dir = "../shared/db/migrations"
+queries_dir = "../shared/db/queries"
+out_dir = "src/generated"
+module_name = "queries"
+emit_schema = false
+instrument_by_default = false

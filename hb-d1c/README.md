@@ -1,289 +1,166 @@
-# d1c
+# hb-d1c
 
-**Type-safe SQL queries for Cloudflare D1 + Rust Workers**
+`hb-d1c` is an early-stage, strict SQL-to-Rust generator for SQLite schemas. It has two renderer targets:
 
-d1c generates compile-time checked Rust functions from your SQL queries. Think `sqlc` for Go, but designed for Cloudflare's edge platform.
+- `d1`: asynchronous Cloudflare Workers/D1 functions;
+- `rusqlite`: synchronous functions using direct `rusqlite` operations.
 
-```rust
-// Write SQL with named parameters
--- name: ListMonitors :many
-SELECT id, name, enabled FROM monitors WHERE org_id = :org_id;
+The generator is a development-time tool. Generated source is committed by the consuming repository. Rusqlite consumers do not depend on `hb-d1c`, an async runtime, an ORM, a query builder, or a runtime SQL parser.
 
-// Get type-safe Rust functions
-let monitors = d1c::queries::list_monitors(&d1, org_id).await?;
+## Model
+
+```text
+migration SQL
+    -> replay, in sorted path order, into an in-memory SQLite database
+annotated query SQL
+    -> sqlparser AST + SQLite prepare and metadata analysis
+strict backend-neutral query IR
+    -> selected target renderer
+committed generated Rust
 ```
 
-No positional parameter bugs. No manual JSON parsing. No runtime type errors.
-
-> **Status:** Early development. Core features work, but expect evolution based on real-world feedback.
-
----
-
-## The Problem
-
-**Raw D1 queries are painful:**
-
-```rust
-// Positional parameters are error-prone
-let result = d1.prepare("SELECT * FROM users WHERE org_id = ?1 AND active = ?2")
-    .bind(&[org_id.into(), active.into()])?  // did you get the order right?
-    .all()
-    .await?;
-
-// Manual JSON parsing is boilerplate-heavy
-for row in result.results {
-    let id = row.get("id").ok_or("missing id")?;  // hope you spelled it right
-    let name = row.get("name").ok_or("missing name")?;
-    // repeat for every field...
-}
-```
-
-**With d1c:**
-
-```rust
-let users = queries::list_active_users(&d1, org_id).await?;
-// That's it. Compile-time checked, zero boilerplate.
-```
-
----
-
-## Quick Start
-
-### 1. Install
-
-```bash
-cargo install hb-d1c
-```
-
-### 2. Initialize
-
-```bash
-cd your-worker-project
-d1c init
-```
-
-This reads your `wrangler.toml`, creates `d1c.toml`, and adds an example query.
-
-### 3. Write Queries
-
-```sql
--- db/queries/users.sql
-
--- name: GetUser :one
-SELECT id, email, active FROM users WHERE id = :id;
-
--- name: ListActiveUsers :many
-SELECT id, email FROM users WHERE org_id = :org_id AND active = true;
-
--- name: CreateUser :one
-INSERT INTO users (id, email, org_id, active)
-VALUES (:id, :email, :org_id, :active)
-RETURNING *;
-```
-
-### 4. Generate Code
-
-```bash
-d1c generate
-```
-
-This creates `src/d1c/queries.rs` with type-safe functions for each query.
-
-### 5. Use It
-
-```rust
-use crate::d1c::queries;
-
-#[worker::event(fetch)]
-async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let d1 = env.d1("DB")?;
-    
-    let user = queries::get_user(&d1, "user_123").await?;
-    let users = queries::list_active_users(&d1, "org_456").await?;
-    
-    Response::ok("done")
-}
-```
-
-**👉 See [GETTING_STARTED.md](GETTING_STARTED.md) for a complete tutorial and [QUERY_FORMAT.md](QUERY_FORMAT.md) for full syntax reference.**
-
----
-
-## How It Works
-
-d1c uses your Wrangler migrations as the schema source:
-
-```
-1. Parse db/migrations/*.sql (your Wrangler migration files)
-2. Replay them into a local SQLite database
-3. Introspect schema to understand types
-4. Read db/queries/*.sql (your query files)
-5. Generate type-safe Rust functions
-```
-
-**Key insight:** D1 is SQLite, so local SQLite introspection gives us perfect type information.
-
----
-
-## Query Reference
-
-### Cardinalities
-
-Specify what your query returns with the `:cardinality` annotation:
-
-| Cardinality | Return Type | Use Case |
-|-------------|-------------|----------|
-| `:one` | `Result<Option<Row>>` | Single row (or none) |
-| `:many` | `Result<Vec<Row>>` | Multiple rows |
-| `:exec` | `Result<()>` | INSERT/UPDATE/DELETE without RETURNING |
-| `:scalar` | `Result<Option<T>>` | Single primitive value (COUNT, SUM, etc.) |
-
-### Named Parameters
-
-Use `:param_name` in queries:
-
-```sql
--- name: FindUser :one
-SELECT * FROM users WHERE email = :email AND active = :active;
-```
-
-Generated function signature:
-
-```rust
-pub async fn find_user(
-    d1: &D1Database,
-    email: &str,
-    active: bool,
-) -> worker::Result<Option<FindUserRow>>
-```
-
-### Headers
-
-Override default behavior with special comments:
-
-```sql
--- name: GetUserBalance :one
--- params: user_id UserId, currency String
-SELECT balance FROM accounts WHERE user_id = :user_id AND currency = :currency;
-```
-
-**Available headers:**
-- `-- params: name Type, ...` – Override inferred parameter types (useful for newtypes)
-- `-- instrument: skip(field, ...)` – Exclude parameters from tracing spans (see Observability section)
-
-**👉 See [QUERY_FORMAT.md](QUERY_FORMAT.md) for complete syntax reference, examples, and edge cases.**
-
----
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `d1c init` | Create `d1c.toml` config |
-| `d1c generate` (or `gen`) | Generate Rust code from queries |
-| `d1c watch` | Auto-regenerate on file changes |
-| `d1c dump-schema` | Export current schema to stdout |
-
----
-
-## Features
-
-- ✅ **Named parameters** – No more positional `?1`, `?2` mistakes
-- ✅ **Compile-time safety** – Typos fail at build time, not runtime
-- ✅ **Zero boilerplate** – No manual JSON parsing
-- ✅ **Multi-file organization** – Split queries by domain (see below)
-- ✅ **WASM-optimized** – Tiny generated code, no runtime overhead
-- ✅ **Wrangler-native** – Uses your existing migration workflow
-- ✅ **Watch mode** – Auto-regenerate during development
-
-### Organizing Queries
-
-d1c encourages splitting queries across multiple `.sql` files by domain:
-
-```
-db/queries/
-├── users.sql      → src/d1c/queries/users.rs
-├── monitors.sql   → src/d1c/queries/monitors.rs
-└── orgs.sql       → src/d1c/queries/orgs.rs
-```
-
-Each file becomes a Rust submodule. Use them like:
-
-```rust
-use crate::d1c::queries::{users, monitors};
-
-let user = users::get_user(&d1, user_id).await?;
-let monitors = monitors::list_by_org(&d1, org_id).await?;
-```
-
----
-
-## Observability
-
-d1c can add `#[tracing::instrument]` to generated functions so database spans flow into whatever telemetry backend you use (Cloudflare Workers Observability picks them up automatically when traces/logs are enabled).
-
-**Enable during setup:**
-```bash
-d1c init
-# → Enable tracing? [y/N] y
-```
-
-**Or add to `d1c.toml`:**
-```toml
-instrument_by_default = true
-```
-
-**What you get:**
-- Automatic span tracking for every query (`d1c.list_users`, `d1c.get_monitor`, etc.)
-- Query parameters logged by default (except sensitive fields)
-- Works with built-in Workers tracing/logging (no extra crate required)
-
-**Hide sensitive parameters:**
-```sql
--- name: LoginUser :one
--- instrument: skip(password_hash)
-SELECT * FROM users WHERE email = :email AND password_hash = :password_hash;
-```
-
-This generates:
-```rust
-#[tracing::instrument(name = "d1c.login_user", skip(d1, password_hash))]
-pub async fn login_user(d1: &D1Database, email: &str, password_hash: &str) { ... }
-```
-
----
+Migration replay and query preparation use the same in-memory schema. Preparation, annotation, inference, migration, and renderer validation errors abort generation before output is changed.
 
 ## Configuration
 
-`d1c.toml` in your project root:
+`d1c.toml` is explicit and versioned:
 
 ```toml
-migrations_dir = "db/migrations"  # Your Wrangler migrations
-queries_dir = "db/queries"        # Your query files
-codegen_dir = "src/d1c"           # Where to write generated code
+version = 1
+target = "rusqlite" # or "d1"
 
-# Optional
-module_name = "queries"           # Generated module name (default: "queries")
-instrument_by_default = false     # Add tracing spans (default: false)
+migrations_dir = "db/migrations"
+queries_dir = "db/queries"
+out_dir = "src/generated"
+module_name = "queries"
+emit_schema = true
+instrument_by_default = false
 ```
 
----
+`version` and `target` are required. Unknown versions, unknown targets, and unknown fields fail. `instrument_by_default` is D1-only and must be `false` for rusqlite.
 
-## Contributing
+Run `d1c init` for interactive setup. It asks for the target first. D1 setup can discover a single `migrations_dir` from `wrangler.toml`; rusqlite setup does not require Wrangler.
 
-Found a bug? Query that doesn't parse? We'd love to hear about it:
-- **File issues** for bugs or missing features
-- **Share your queries** if d1c fails to handle them
-- **Contribute docs** for patterns you discover
+## Commands
 
-Especially interested in feedback from production D1 users.
+```text
+d1c init
+d1c generate
+d1c check
+d1c watch
+d1c dump-schema
+```
 
----
+Use `--config PATH` with any command. `generate` builds the complete output in memory before replacing files, avoids rewriting unchanged files, and removes stale generated Rust submodules. `check` runs the same strict pipeline without writing and fails on missing, stale, or extra generated modules.
 
-## License
+Typical CI:
 
-MIT
+```sh
+d1c --config d1c.toml check
+```
 
----
+## Query format
 
-**Inspired by [sqlc](https://sqlc.dev).** Built for teams running Rust Workers who want type safety without the weight of traditional ORMs.
+```sql
+-- name: InsertRecord :exec
+INSERT INTO records (broker_id, ordinal, payload)
+VALUES (:broker_id, :ordinal, :payload);
+
+-- name: CountRecords :scalar
+-- columns: count i64
+SELECT count(*) AS count FROM records;
+```
+
+Cardinalities are `:exec`, `:one`, `:many`, and `:scalar`. Each annotation owns exactly one SQL statement. See [QUERY_FORMAT.md](QUERY_FORMAT.md) for the complete strictness contract.
+
+SQLite `prepare` does not report parameter types. `hb-d1c` infers only direct, unambiguous column-bound parameters. Ambiguous parameters require an exact annotation:
+
+```sql
+-- params: ordinal i64, broker_id String
+```
+
+Expressions, aggregates, custom declarations, and other result metadata that cannot prove a Rust type require an exact result annotation:
+
+```sql
+-- columns: id i64, deleted_at Option<String>
+```
+
+Type text is parsed as Rust `syn::Type`; invalid Rust syntax fails generation. Unknown types never fall back to `String`.
+
+## Generated rusqlite API
+
+Parameterized queries always receive a query-specific parameter struct. String and blob inputs borrow data; primitives remain values:
+
+```rust
+pub struct InsertRecordParams<'a> {
+    pub broker_id: &'a str,
+    pub ordinal: i64,
+    pub payload: &'a [u8],
+    pub note: Option<&'a str>,
+}
+
+pub fn insert_record(
+    connection: &rusqlite::Connection,
+    params: &InsertRecordParams<'_>,
+) -> rusqlite::Result<usize>;
+```
+
+Rusqlite SQL retains `:named` placeholders and bindings use `rusqlite::named_params!`; consumers never maintain positional correspondence. Generated cardinalities are:
+
+| Annotation | Return type |
+|---|---|
+| `:exec` | `rusqlite::Result<usize>` |
+| `:one` | `rusqlite::Result<Option<Row>>` |
+| `:many` | `rusqlite::Result<Vec<Row>>` |
+| `:scalar` | `rusqlite::Result<Option<T>>` |
+
+Result rows derive `Debug`, `Clone`, and `PartialEq`, not Serde. Application code owns transaction boundaries. `rusqlite::Transaction` dereferences to `Connection`, so generated functions can be called with `&transaction`; generated code never begins or commits transactions.
+
+A handwritten module such as `src/generated.rs` can expose output configured with `out_dir = "src/generated"`:
+
+```rust
+pub mod queries;
+```
+
+Then call `crate::generated::queries::records::insert_record(...)`.
+
+## Generated D1 API
+
+D1 output remains asynchronous, accepts `&worker::D1Database`, binds generator-owned positional SQL, and uses Worker result primitives. Optional tracing instrumentation belongs only to this renderer. D1 row values retain Serde derives required by Worker decoding.
+
+```rust
+pub async fn insert_record(
+    d1: &worker::D1Database,
+    broker_id: &str,
+    ordinal: i64,
+    payload: &[u8],
+) -> worker::Result<()>;
+```
+
+D1 output contains no rusqlite operations. Rusqlite output contains no Worker, D1, wasm-bindgen, tracing, or async-runtime operations.
+
+## Library API
+
+The CLI is a thin caller of the reusable library:
+
+```rust
+let config = hb_d1c::Config::load("d1c.toml")?;
+hb_d1c::generate(&config, ".")?;
+hb_d1c::check(&config, ".")?;
+```
+
+`Schema::replay`, `parse_query_file`, `analyze_queries`, and `plan` expose schema replay, query analysis, and in-memory output planning for tests and future automation.
+
+## Type policy and limitations
+
+Built-in declarations map as follows:
+
+- `INTEGER` and declarations containing `INT` -> `i64`;
+- `BOOLEAN` / `BOOL` -> `bool`;
+- `REAL` / `FLOAT` / `DOUBLE` -> `f64`;
+- `TEXT` / `CHAR` / `CLOB` -> `String`;
+- `BLOB` -> `Vec<u8>`.
+
+`NUMERIC`, `DATE`, `DATETIME`, `JSON`, custom declaration strings, derived expressions, and ambiguous metadata require annotations. Outer joins are treated conservatively: inferred result fields remain optional when non-nullness cannot be proven. Custom annotated types must provide the target runtime conversion traits and be reachable from the generated module.
+
+D1 generated code is token- and golden-tested but is not compiled against `worker` in this repository. The rusqlite fixture is generated, compiled independently with only `rusqlite`, and executed against an in-memory database.

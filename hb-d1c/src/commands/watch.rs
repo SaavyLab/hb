@@ -1,82 +1,39 @@
 use std::{path::Path, sync::mpsc, time::Duration};
 
 use anyhow::Result;
-use console::style;
 use notify::{EventKind, RecursiveMode, Watcher};
-use rusqlite::Connection;
 
-use crate::{commands::generate, D1CConfig};
+use crate::{config::Config, generator};
 
-pub fn run(conn: &Connection, config: &D1CConfig) -> Result<()> {
-    println!("{} Watching for changes...", style("👀").cyan());
-    println!("   - Queries: {}", config.queries_dir);
-
-    let (tx, rx) = mpsc::channel();
-
-    let mut watcher = notify::recommended_watcher(move |res| match res {
-        Ok(event) => {
-            let _ = tx.send(event);
-        }
-        Err(e) => println!("watch error: {e:?}"),
+pub fn run(config: &Config, base: &Path) -> Result<()> {
+    let (sender, receiver) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |event| {
+        let _ = sender.send(event);
     })?;
+    watcher.watch(&base.join(&config.migrations_dir), RecursiveMode::Recursive)?;
+    watcher.watch(&base.join(&config.queries_dir), RecursiveMode::Recursive)?;
 
-    watcher.watch(Path::new(&config.queries_dir), RecursiveMode::Recursive)?;
-
-    // Initial generation
-    run_generate(conn, config);
-
+    run_generation(config, base);
+    println!("watching migrations and queries");
     loop {
-        match rx.recv() {
-            Ok(event) => {
-                // Filter out Access events (reads) which can cause loops if tools scan the dir
-                if let EventKind::Access(_) = event.kind {
-                    continue;
-                }
-
-                // Ignore schema.sql changes to avoid infinite loops since we generate it
-                if event
-                    .paths
-                    .iter()
-                    .any(|p| p.file_name().map(|n| n == "schema.sql").unwrap_or(false))
-                {
-                    continue;
-                }
-
-                // Filter out noise events (unknown/other) if they are causing issues,
-                // but usually Modify/Create/Remove are what we want.
-
-                // Debounce
-                std::thread::sleep(Duration::from_millis(100));
-                while rx.try_recv().is_ok() {}
-
-                // Log path for debugging
-                let path_name = event
-                    .paths
-                    .first()
-                    .map(|p| {
-                        p.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    })
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                println!("{} Change detected in {path_name}", style("🔄").green());
-                run_generate(conn, config);
-            }
-            Err(e) => println!("watch error: {e:?}"),
+        let event = receiver.recv()??;
+        if matches!(event.kind, EventKind::Access(_))
+            || event
+                .paths
+                .iter()
+                .any(|path| path.file_name().is_some_and(|name| name == "schema.sql"))
+        {
+            continue;
         }
+        std::thread::sleep(Duration::from_millis(100));
+        while receiver.try_recv().is_ok() {}
+        run_generation(config, base);
     }
 }
 
-fn run_generate(conn: &Connection, config: &D1CConfig) {
-    match generate::run(conn, config) {
-        Ok(_) => {
-            println!("{} Generated {}", style("✅").green(), config.out_dir);
-        }
-        Err(e) => {
-            // Use eprintln for errors to be standard compliant
-            eprintln!("{} Error: {}", style("❌").red(), e);
-        }
+fn run_generation(config: &Config, base: &Path) {
+    match generator::generate(config, base) {
+        Ok(report) => println!("generated {} changed file(s)", report.written.len()),
+        Err(error) => eprintln!("generation failed: {error:#}"),
     }
 }

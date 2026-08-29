@@ -1,132 +1,137 @@
-# Getting Started with d1c
+# Getting started
 
-This guide will help you set up **d1c** in your Cloudflare Worker project.
+`hb-d1c` is an early-stage development-time generator. Choose either the Cloudflare D1 renderer or the synchronous rusqlite renderer. Generated Rust belongs in source control; the generator is not a runtime framework.
 
-## Prerequisites
+## 1. Configure
 
-1.  **Rust & Cargo**: You should have a working Rust environment.
-2.  **Wrangler**: Cloudflare's CLI tool (`npm install -g wrangler`).
-3.  **A D1 Database**: Created via `wrangler d1 create <name>`.
+Run:
 
----
-
-## 1. Installation
-
-Install the `d1c` CLI tool:
-
-```bash
-cargo install d1c
-```
-
----
-
-## 2. Setup
-
-Navigate to your Worker's crate directory (where `wrangler.toml` is) and run:
-
-```bash
+```sh
 d1c init
 ```
 
-This interactive command will:
-1.  Detect your D1 database configuration in `wrangler.toml`.
-2.  Ask where your migrations and queries are located.
-3.  Create a `d1c.toml` configuration file.
-4.  Generate a sample query file (`example.sql`) if your query directory is empty.
+The first prompt selects `d1` or `rusqlite`. A complete rusqlite configuration is:
 
----
+```toml
+version = 1
+target = "rusqlite"
 
-## 3. The Workflow
+migrations_dir = "db/migrations"
+queries_dir = "db/queries"
+out_dir = "src/generated"
+module_name = "queries"
+emit_schema = true
+instrument_by_default = false
+```
 
-d1c follows a simple cycle: **Migrate → Query → Generate**.
+For D1, set `target = "d1"`. D1 initialization may discover migrations from `wrangler.toml`. Rusqlite initialization has no Wrangler dependency. Tracing instrumentation is D1-only.
 
-### Step 3a: Write Migrations
-Create your D1 migrations as usual. d1c uses these to understand your schema.
+## 2. Add migration SQL
 
 ```sql
--- migrations/0001_init.sql
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  active BOOLEAN NOT NULL DEFAULT FALSE
+-- db/migrations/001_records.sql
+CREATE TABLE records (
+    id INTEGER PRIMARY KEY,
+    broker_id TEXT NOT NULL,
+    payload BLOB NOT NULL,
+    note TEXT
 );
 ```
 
-### Step 3b: Write Queries
-Create `.sql` files in your queries directory (e.g., `db/queries/users.sql`). Use the `-- name:` header to define the function name and return type.
+Migration files are replayed by sorted path into one in-memory SQLite database. `schema.sql` is a generated inspection file and is never replayed. An empty migrations directory intentionally represents an empty schema. Any migration error aborts and rolls back the complete replay.
+
+## 3. Add annotated queries
 
 ```sql
--- name: GetUser :one
-SELECT id, email, active FROM users WHERE id = :id;
+-- db/queries/records.sql
+-- name: InsertRecord :exec
+INSERT INTO records (broker_id, payload, note)
+VALUES (:broker_id, :payload, :note);
 
--- name: CreateUser :one
-INSERT INTO users (id, email) VALUES (:id, :email) RETURNING *;
+-- name: GetRecord :one
+SELECT id, broker_id, payload, note
+FROM records
+WHERE broker_id = :broker_id;
+
+-- name: CountRecords :scalar
+-- columns: count i64
+SELECT count(*) AS count FROM records;
 ```
 
-**Supported Cardinalities:**
-- `:one`    -> Returns `Result<Option<Row>>`
-- `:many`   -> Returns `Result<Vec<Row>>`
-- `:exec`   -> Returns `Result<()>` (no return value)
-- `:scalar` -> Returns `Result<Option<T>>` (single primitive value)
+Parameter names come from SQL. Direct insert/update/comparison contexts can infer types from migration declarations. SQLite does not expose parameter types through `prepare`, so ambiguous cases must declare every parameter exactly:
 
-**Batch Operations:**
-Append `:stmt` to the header (e.g. `-- name: CreateUser :exec :stmt`) to generate a `{name}_stmt` function that returns a prepared statement for use with `d1.batch()`.
+```sql
+-- params: broker_id String, ordinal i64
+```
 
-### Step 3c: Generate Code
-Run the generator:
+Expressions and aggregates commonly need exact result declarations:
 
-```bash
+```sql
+-- columns: count i64
+```
+
+Annotations use Rust type syntax and are parsed with `syn`. Unknown or ambiguous types fail; they never become `String` by default.
+
+## 4. Generate and expose the module
+
+```sh
 d1c generate
+git add src/generated db/queries/schema.sql
 ```
 
-This creates a Rust file (default: `src/d1c/queries.rs`) containing type-safe functions for your queries.
-
-> **Pro Tip**: Run `d1c watch` in a separate terminal to automatically regenerate code whenever you save a `.sql` file.
-
----
-
-## 4. Using the Generated Code
-
-Import the module in your Worker and use the functions. They are `async` and take the `D1Database` as the first argument.
+With `out_dir = "src/generated"`, keep a handwritten `src/generated.rs`:
 
 ```rust
-// src/lib.rs or src/main.rs
-mod d1c; // matching the directory you generated into
-use crate::d1c::queries::*; // import generated functions
-
-#[worker::event(fetch)]
-async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let d1 = env.d1("DB")?;
-    
-    // 1. Fetch a user (Type-safe!)
-    let user = get_user(&d1, "user_123").await?;
-    
-    if let Some(u) = user {
-        console_log!("Found user: {}", u.email);
-    }
-
-    // 2. Create a user (Compiler enforces correct arguments!)
-    create_user(&d1, "user_456", "new@example.com").await?;
-
-    Response::ok("Done")
-}
+pub mod queries;
 ```
 
----
+The query file above is available as `crate::generated::queries::records`.
 
-## Next Steps
+Run generation twice if desired: unchanged output is not rewritten and both runs are byte-identical. Commit generated source with the query and migration change.
 
-Now that you have d1c set up, check out:
+## 5. Call rusqlite output
 
-- **[QUERY_FORMAT.md](QUERY_FORMAT.md)** – Complete reference for query syntax, cardinalities, and headers
-- **[README.md#observability](README.md#observability)** – Enable automatic tracing for database queries
-- **`d1c watch`** – Run in a separate terminal to auto-regenerate on file changes
+Generated API shape:
 
-### Tips for Success
+```rust
+let changed = insert_record(
+    &connection,
+    &InsertRecordParams {
+        broker_id: "broker-1",
+        payload: &[1, 2, 3],
+        note: None,
+    },
+)?;
+```
 
-1. **Commit generated code** – Treat `src/d1c/queries.rs` like any other source file
-2. **Use `d1c watch`** – Faster workflow during development
-3. **Name queries clearly** – `get_user_by_email` beats `user_query_1`
-4. **Review the QUERY_FORMAT** – Learn about `:one`, `:many`, `:exec`, `:scalar` and when to use each
+Bindings use `rusqlite::named_params!` with the visible SQL names. `:exec` returns affected rows; `:one` and `:scalar` return `Option`; `:many` returns `Vec`.
 
-Happy querying! 🚀
+Application code owns transactions:
+
+```rust
+let transaction = connection.transaction()?;
+insert_record(&transaction, &params)?;
+transaction.commit()?;
+```
+
+No transaction boundary, pool, async wrapper, ORM, query builder, or parser is generated. The runtime dependency is only `rusqlite` plus any crates needed by explicitly annotated custom types.
+
+## 6. Call D1 output
+
+D1 functions remain async and use Worker primitives:
+
+```rust
+let row = get_record(&database, "broker-1").await?;
+```
+
+D1 uses generator-owned positional binding. Optional `#[tracing::instrument]` generation is configured by `instrument_by_default` and is unavailable to rusqlite.
+
+## 7. Enforce drift in CI
+
+```sh
+d1c check
+```
+
+`check` reruns migration replay, parse, prepare, analysis, and rendering in memory. It exits nonzero for missing, stale, or extra generated modules and does not rewrite output.
+
+See [QUERY_FORMAT.md](QUERY_FORMAT.md) for strict statement, cardinality, identifier, type, and annotation rules.
