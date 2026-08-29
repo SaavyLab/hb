@@ -1,12 +1,30 @@
 [package]
 name = "hb-d1c"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["SaavyLab LLC <jayson@saavylab.com>"]
 description = "Strict SQL-to-Rust generator for Cloudflare D1 and rusqlite"
 license = "MIT"
 repository = "https://github.com/saavylab/hb"
 readme = "README.md"
+include = [
+    "src/**",
+    "tests/generation.rs",
+    "tests/fixtures/shared/**",
+    "tests/fixtures/d1/d1c.toml",
+    "tests/fixtures/d1/generated/**",
+    "tests/fixtures/rusqlite_consumer/Cargo.toml.fixture",
+    "tests/fixtures/rusqlite_consumer/Cargo.lock.fixture",
+    "tests/fixtures/rusqlite_consumer/d1c.toml",
+    "tests/fixtures/rusqlite_consumer/src/main.rs",
+    "tests/fixtures/rusqlite_consumer/src/generated/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md",
+    "GETTING_STARTED.md",
+    "QUERY_FORMAT.md",
+    "LICENSE",
+]
 
 [[bin]]
 name = "d1c"

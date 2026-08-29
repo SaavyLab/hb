@@ -286,5 +286,31 @@ mod tests {
         assert!(sqlite_source.contains("rusqlite"));
         assert!(!sqlite_source.contains("worker::"));
         assert!(!sqlite_source.contains("hb_d1c"));
+        assert!(!sqlite_source.contains("OptionalExtension"));
+    }
+
+    #[test]
+    fn rusqlite_imports_optional_extension_only_for_optional_cardinalities() {
+        let (root, config) = fixture(Target::Rusqlite);
+        let many_source = plan(&config, root.path())
+            .unwrap()
+            .files
+            .values()
+            .cloned()
+            .collect::<String>();
+        assert!(!many_source.contains("OptionalExtension"));
+
+        fs::write(
+            root.path().join("db/queries/items.sql"),
+            "-- name: GetItem :one\nSELECT id, name FROM item;",
+        )
+        .unwrap();
+        let one_source = plan(&config, root.path())
+            .unwrap()
+            .files
+            .values()
+            .cloned()
+            .collect::<String>();
+        assert!(one_source.contains("use rusqlite::OptionalExtension;"));
     }
 }

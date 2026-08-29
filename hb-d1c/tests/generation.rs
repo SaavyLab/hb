@@ -223,7 +223,8 @@ fn cli_generate_and_check_report_drift_and_config_errors() {
 #[test]
 fn independent_fixture_manifest_has_only_rusqlite_runtime_dependency() {
     let manifest = fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rusqlite_consumer/Cargo.toml"),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/rusqlite_consumer/Cargo.toml.fixture"),
     )
     .unwrap();
     assert!(manifest.contains("rusqlite"));
