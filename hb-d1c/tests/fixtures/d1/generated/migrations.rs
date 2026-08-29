@@ -6,8 +6,10 @@ pub struct Migration {
     pub sql: &'static str,
     pub checksum: &'static str,
 }
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: "001_records.sql",
-    sql: include_str!("../../shared/db/migrations/001_records.sql"),
-    checksum: "sha256:feb0131cce24e5eb9033695aa981e2591ceb96953e6afee0fc80f2f6d9e20dbc",
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: "001_records.sql",
+        sql: "CREATE TABLE records (\n    id INTEGER PRIMARY KEY,\n    broker_id TEXT NOT NULL,\n    ordinal INTEGER NOT NULL,\n    payload BLOB NOT NULL,\n    note TEXT\n);\n",
+        checksum: "sha256:feb0131cce24e5eb9033695aa981e2591ceb96953e6afee0fc80f2f6d9e20dbc",
+    },
+];
